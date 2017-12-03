@@ -16,10 +16,10 @@ contract ERC20 {
 
 }
 
-contract owned {
+contract Owned {
     address public owner;
 
-    function owned() {
+    function Owned() {
         owner = msg.sender;
     }
 
@@ -33,13 +33,13 @@ contract owned {
     }
 }
 
-contract CJTToken is ERC20, owned {
+contract MNTToken is ERC20, Owned {
     // Public variables of the token
     string public name = "Media Network Token";
     string public symbol = "MNT";
     uint8 public decimals = 18;
-    uint256 public totalSupply = 0; // 105 * 10**6 * 10**18;
-    uint256 public maxSupply = 105 * 10**6 * 10**18;
+    uint256 public totalSupply = 0; // 125 * 10**6 * 10**18;
+    uint256 public maxSupply = 125 * 10**6 * 10**18;
 
     // This creates an array with all balances
     mapping (address => uint256) public balanceOf;
@@ -53,7 +53,7 @@ contract CJTToken is ERC20, owned {
      *
      * Gives ownership of all initial tokens to the Coin Joker Team. Sets ownership of contract
      */
-    function CJTToken(
+    function MNTToken(
         address cjTeam
     ) {
         //balanceOf[msg.sender] = totalSupply;              // Give the creator all initial tokens
@@ -66,12 +66,7 @@ contract CJTToken is ERC20, owned {
     /**
      * Internal transfer, only can be called by this contract
      */
-    function _transfer(
-        address _from, 
-        address _to, 
-        uint256 _value
-    ) internal 
-    {
+    function _transfer(address _from, address _to, uint256 _value) internal {
         require(_to != 0x0);                               // Prevent transfer to 0x0 address
         require(balanceOf[_from] >= _value);                // Check if the sender has enough
         require(balanceOf[_to] + _value > balanceOf[_to]); // Check for overflows
@@ -165,12 +160,13 @@ contract CJTToken is ERC20, owned {
     // Token sale variables and methods
     // --------------------------------
 
-    bool saleHasStarted;
-    bool saleHasEnded;
+    bool saleHasStarted = false;
+    bool saleHasEnded = false;
     uint256 public saleEndBlock;
     uint256 public saleStartBlock;
     uint256 public maxEthToRaise = 7500 * 10**18;
     uint256 public totalEthRaised;
+    uint256 public ethAvailable;
     uint256 public eth2mnt = 10000 * 10**18; // number of MNTs you get for 1 ETH
 
     /* Issue new tokens - internal function */     
@@ -205,14 +201,46 @@ contract CJTToken is ERC20, owned {
      
         if (maxEthToRaise > (totalEthRaised + msg.value)) {                 // Check if the user sent too much ETH         
             totalEthRaised += msg.value;                                    // Add to total eth Raised
+            ethAvailable += msg.value;
             _mintTokens(msg.sender, msg.value * eth2mnt);
         } else {                                                              // If user sent to much eth       
             uint maxContribution = maxEthToRaise - totalEthRaised;            // Calculate maximum contribution       
             totalEthRaised += maxContribution;  
+            ethAvailable += maxContribution;
             _mintTokens(msg.sender, maxContribution * eth2mnt);
             uint toReturn = msg.value - maxContribution;                       // Calculate how much should be returned       
             saleHasEnded = true;
             msg.sender.send(toReturn);                                  // Refund the balance that is over the cap          
         }
     } 
+
+    /**
+     * Withdraw the funds
+     *
+     * Sends the raised amount to the CJ Team. Mints 40% of remaining tokens to send to the CJ team.
+     */
+    function endOfSaleFullWithdrawal() onlyOwner {
+        if (saleHasEnded || block.number > saleEndBlock) {
+            //if (owner.send(ethAvailable)) {
+            if (owner.send(this.balance)) {
+                ethAvailable = 0;
+                _mintTokens (owner, totalSupply * 2 / 3);
+            }
+        }
+    }
+
+    /**
+     * Withdraw the funds
+     *
+     * Sends partial amount to the CJ Team
+     */
+    function partialWithdrawal(uint256 toWithdraw) onlyOwner {
+        if (owner.send(toWithdraw)) {
+            ethAvailable -= toWithdraw;
+        }
+    }
 }
+// test owner addresses:
+// B: 0x72e3e0C5a4b10D9580A687389EF8a7fB8B23Fb64
+// T: 0x9B3AA3B13D877B744Af105b69171c6f89EBC47a1
+// E: 0xA258bf4064B02Eb77fac544EA007738bEE2a3345
