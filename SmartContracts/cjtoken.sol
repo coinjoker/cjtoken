@@ -1,14 +1,14 @@
-pragma solidity ^0.4.16;
+pragma solidity ^0.4.18;
 
 // https://github.com/ethereum/EIPs/issues/20
 
 contract ERC20 {
-    function totalSupply() constant returns (uint256 totalSupply);
-    function balanceOf(address _owner) constant returns (uint256 balance);
-    function transfer(address _to, uint256 _value) returns (bool success);
-    function transferFrom(address _from, address _to, uint256 _value) returns (bool success);
-    function approve(address _spender, uint256 _value) returns (bool success);
-    function allowance(address _owner, address _spender) constant returns (uint256 remaining);
+    function totalSupply() public constant returns (uint256 supply);
+    function balanceOf(address _owner) public constant returns (uint256 balance);
+    function transfer(address _to, uint256 _value) public returns (bool success);
+    function transferFrom(address _from, address _to, uint256 _value) public returns (bool success);
+    function approve(address _spender, uint256 _value) public returns (bool success);
+    function allowance(address _owner, address _spender) public constant returns (uint256 remaining);
     
     // These generate a public event on the blockchain that will notify clients
     event Transfer(address indexed _from, address indexed _to, uint256 _value);
@@ -19,7 +19,7 @@ contract ERC20 {
 contract Owned {
     address public owner;
 
-    function Owned() {
+    function Owned() public {
         owner = msg.sender;
     }
 
@@ -28,7 +28,7 @@ contract Owned {
         _;
     }
 
-    function transferOwnership(address newOwner) onlyOwner {
+    function transferOwnership(address newOwner) public onlyOwner {
         owner = newOwner;
     }
 }
@@ -40,6 +40,7 @@ contract MNTToken is ERC20, Owned {
     uint8 public decimals = 18;
     uint256 public totalSupply = 0; // 125 * 10**6 * 10**18;
     uint256 public maxSupply = 125 * 10**6 * 10**18;
+    address public cjTeamWallet = 0x9887c2da3aC5449F3d62d4A04372a4724c21f54C;
 
     // This creates an array with all balances
     mapping (address => uint256) public balanceOf;
@@ -55,12 +56,17 @@ contract MNTToken is ERC20, Owned {
      */
     function MNTToken(
         address cjTeam
-    ) {
+    ) public {
         //balanceOf[msg.sender] = totalSupply;              // Give the creator all initial tokens
         totalEthRaised = 0;
-        if (cjTeam != 0) {
+        /*if (cjTeam != 0) {
             owner = cjTeam;
-        }
+        }*/
+        cjTeamWallet = cjTeam;
+    }
+	
+    function changeCJTeamWallet(address newWallet) public onlyOwner {
+        cjTeamWallet = newWallet;
     }
 
     /**
@@ -83,8 +89,9 @@ contract MNTToken is ERC20, Owned {
      * @param _to The address of the recipient
      * @param _value the amount to send
      */
-    function transfer(address _to, uint256 _value) returns (bool success) {
+    function transfer(address _to, uint256 _value) public returns (bool success) {
         _transfer(msg.sender, _to, _value);
+        return true;
     }
 
     /**
@@ -100,7 +107,7 @@ contract MNTToken is ERC20, Owned {
         address _from, 
         address _to, 
         uint256 _value
-    ) returns (bool success) 
+    ) public returns (bool success) 
     {
         require(_value <= allowance[_from][msg.sender]);     // Check allowance
         allowance[_from][msg.sender] -= _value;
@@ -119,7 +126,7 @@ contract MNTToken is ERC20, Owned {
     function approve(
         address _spender, 
         uint256 _value
-    ) returns (bool success)
+    ) public returns (bool success)
     {
         allowance[msg.sender][_spender] = _value;
         Approval(msg.sender, _spender, _value);
@@ -131,7 +138,7 @@ contract MNTToken is ERC20, Owned {
      *
      * @param _owner The owner of the account
      */
-    function balanceOf(address _owner) constant returns (uint256 balance) {
+    function balanceOf(address _owner) public constant returns (uint256 balance) {
         return balanceOf[_owner];
     }
 
@@ -144,7 +151,7 @@ contract MNTToken is ERC20, Owned {
     function allowance(
         address _owner, 
         address _spender
-    ) constant returns (uint256 remaining)
+    ) public constant returns (uint256 remaining)
     {
         return allowance[_owner][_spender];
     }
@@ -152,7 +159,7 @@ contract MNTToken is ERC20, Owned {
     /**
      * Get total supply of all tokens
      */
-    function totalSupply() constant returns (uint256 supply) {
+    function totalSupply() public constant returns (uint256 supply) {
         return totalSupply;
     }
 
@@ -162,21 +169,17 @@ contract MNTToken is ERC20, Owned {
 
     bool saleHasStarted = false;
     bool saleHasEnded = false;
-    uint256 public saleEndBlock;
-    uint256 public saleStartBlock;
+    uint256 public saleEndTime   = 1518649200; // 15.2.2018, 0:00:00, GMT+1
+    uint256 public saleStartTime = 1513435000; // 16.12.2017, 15:36:40, GMT+1
     uint256 public maxEthToRaise = 7500 * 10**18;
     uint256 public totalEthRaised;
     uint256 public ethAvailable;
-    uint256 public eth2mnt = 10000 * 10**18; // number of MNTs you get for 1 ETH
+    uint256 public eth2mnt = 10000; // number of MNTs you get for 1 ETH - actually for 1/10**18 of ETH
 
     /* Issue new tokens - internal function */     
     function _mintTokens (address _to, uint256 _amount) internal {             
-        if (balanceOf[_to] + _amount < balanceOf[_to]) {
-            throw;     // Check for overflows
-        }
-        if (totalSupply + _amount > maxSupply) {
-            throw;
-        }
+        require(balanceOf[_to] + _amount >= balanceOf[_to]); // check for overflows
+        require(totalSupply + _amount <= maxSupply);
         totalSupply += _amount;                                      // Update total supply
         balanceOf[_to] += _amount;                               // Set minted coins to target
         Transfer(0x0, _to, _amount);                            // Create Transfer event from 0x
@@ -184,18 +187,14 @@ contract MNTToken is ERC20, Owned {
 
 
     /* Users send ETH and enter the token sale*/  
-    function () payable {
-        if (msg.value == 0) {
-            throw;                                          // Throw if the value is 0  
-        }
-        if (saleHasEnded || block.number > saleEndBlock) {
-            throw;        // Throw if the token sale has ended     
-        }
-        if (!saleHasStarted) {                                                // Check if this is the first token sale transaction       
-            if (block.number >= saleStartBlock) {                             // Check if the token sale should start        
-            saleHasStarted = true;                                           // Set that the token sale has started         
+    function () public payable {
+        require(msg.value != 0);
+        require(!(saleHasEnded || now > saleEndTime)); // Throw if the token sale has ended
+        if (!saleHasStarted) {                                                // Check if this is the first token sale transaction   
+            if (now >= saleStartTime) {                             // Check if the token sale should start        
+                saleHasStarted = true;                                           // Set that the token sale has started         
             } else {
-                throw;
+                require(false);
             }
         }     
      
@@ -203,6 +202,7 @@ contract MNTToken is ERC20, Owned {
             totalEthRaised += msg.value;                                    // Add to total eth Raised
             ethAvailable += msg.value;
             _mintTokens(msg.sender, msg.value * eth2mnt);
+            cjTeamWallet.transfer(msg.value); 
         } else {                                                              // If user sent to much eth       
             uint maxContribution = maxEthToRaise - totalEthRaised;            // Calculate maximum contribution       
             totalEthRaised += maxContribution;  
@@ -210,22 +210,23 @@ contract MNTToken is ERC20, Owned {
             _mintTokens(msg.sender, maxContribution * eth2mnt);
             uint toReturn = msg.value - maxContribution;                       // Calculate how much should be returned       
             saleHasEnded = true;
-            msg.sender.send(toReturn);                                  // Refund the balance that is over the cap          
+            msg.sender.transfer(toReturn);                                  // Refund the balance that is over the cap   
+            cjTeamWallet.transfer(msg.value-toReturn);       
         }
     } 
 
     /**
      * Withdraw the funds
      *
-     * Sends the raised amount to the CJ Team. Mints 40% of remaining tokens to send to the CJ team.
+     * Sends the raised amount to the CJ Team. Mints 40% of tokens to send to the CJ team.
      */
-    function endOfSaleFullWithdrawal() onlyOwner {
-        if (saleHasEnded || block.number > saleEndBlock) {
+    function endOfSaleFullWithdrawal() public onlyOwner {
+        if (saleHasEnded || now > saleEndTime) {
             //if (owner.send(ethAvailable)) {
-            if (owner.send(this.balance)) {
-                ethAvailable = 0;
-                _mintTokens (owner, totalSupply * 2 / 3);
-            }
+            cjTeamWallet.transfer(this.balance);
+            ethAvailable = 0;
+            //_mintTokens (owner, totalSupply * 2 / 3);
+            _mintTokens (cjTeamWallet, 50 * 10**6 * 10**18); // CJ team gets 40% of token supply
         }
     }
 
@@ -234,13 +235,8 @@ contract MNTToken is ERC20, Owned {
      *
      * Sends partial amount to the CJ Team
      */
-    function partialWithdrawal(uint256 toWithdraw) onlyOwner {
-        if (owner.send(toWithdraw)) {
-            ethAvailable -= toWithdraw;
-        }
+    function partialWithdrawal(uint256 toWithdraw) public onlyOwner {
+        cjTeamWallet.transfer(toWithdraw);
+        ethAvailable -= toWithdraw;
     }
 }
-// test owner addresses:
-// B: 0x72e3e0C5a4b10D9580A687389EF8a7fB8B23Fb64
-// T: 0x9B3AA3B13D877B744Af105b69171c6f89EBC47a1
-// E: 0xA258bf4064B02Eb77fac544EA007738bEE2a3345
